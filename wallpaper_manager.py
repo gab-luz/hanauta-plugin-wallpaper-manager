@@ -1073,7 +1073,6 @@ class Backend(QObject):
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Hanauta Wallpaper Manager")
-    app.setDesktopFileName("HanautaWallpaperManager")
     signal.signal(signal.SIGINT, lambda *_args: app.quit())
 
     if not QML_FILE.exists():
