@@ -806,17 +806,29 @@ Window {
                 color: Qt.rgba(1, 1, 1, 0.04)
                 border.width: 1
                 border.color: Qt.rgba(1, 1, 1, 0.07)
-                implicitHeight: 56
+                implicitHeight: backend.downloadProgressActive ? 84 : 56
 
-                Text {
+                ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 16
-                    text: backend.status
-                    color: themeModel.text
-                    font.family: fontsModel.ui
-                    font.pixelSize: 13
-                    verticalAlignment: Text.AlignVCenter
-                    wrapMode: Text.WordWrap
+                    spacing: 8
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: backend.status
+                        color: themeModel.text
+                        font.family: fontsModel.ui
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                    }
+
+                    ProgressBar {
+                        Layout.fillWidth: true
+                        visible: backend.downloadProgressActive
+                        from: 0
+                        to: 100
+                        value: backend.downloadProgress
+                    }
                 }
             }
         }

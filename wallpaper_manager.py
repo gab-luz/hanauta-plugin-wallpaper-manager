@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import signal
 import subprocess
 import sys
@@ -307,6 +308,8 @@ class Backend(QObject):
     providerChanged = pyqtSignal()
     providerSelectionRequiredChanged = pyqtSignal()
     busyChanged = pyqtSignal()
+    downloadProgressChanged = pyqtSignal()
+    downloadProgressActiveChanged = pyqtSignal()
     randomizerChanged = pyqtSignal()
     konachanTagsChanged = pyqtSignal()
     konachanCandidatesChanged = pyqtSignal()
@@ -328,6 +331,8 @@ class Backend(QObject):
         self._theme = load_theme_palette()
         self._matugen_available = self._detect_matugen_available()
         self._busy = False
+        self._download_progress = 0
+        self._download_progress_active = False
         self._wallpaper_index = load_wallpaper_index_cache()
         self._providers = self._build_providers()
         self._provider_selection_required = not self._provider_initialized()
@@ -386,6 +391,17 @@ class Backend(QObject):
             return
         self._busy = busy
         self.busyChanged.emit()
+        if not busy:
+            self._set_download_progress(False, 0)
+
+    def _set_download_progress(self, active: bool, percent: int) -> None:
+        clamped = max(0, min(100, int(percent)))
+        if self._download_progress != clamped:
+            self._download_progress = clamped
+            self.downloadProgressChanged.emit()
+        if self._download_progress_active != bool(active):
+            self._download_progress_active = bool(active)
+            self.downloadProgressActiveChanged.emit()
 
     def _detect_matugen_available(self) -> bool:
         return (
@@ -445,15 +461,49 @@ class Backend(QObject):
     def _run_git_prepare_pack(self, target_dir: Path, repo_url: str) -> tuple[bool, str]:
         target_dir.parent.mkdir(parents=True, exist_ok=True)
         if target_dir.exists():
-            cmd = ["git", "-C", str(target_dir), "pull", "--ff-only"]
+            cmd = ["git", "-C", str(target_dir), "pull", "--ff-only", "--progress"]
         else:
-            cmd = ["git", "clone", "--depth", "1", repo_url, str(target_dir)]
+            cmd = ["git", "clone", "--depth", "1", "--progress", repo_url, str(target_dir)]
+        self._set_download_progress(True, 2)
+        percent_re = re.compile(r"(\d{1,3})%")
+        output_lines: list[str] = []
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+            if process.stderr is not None:
+                for raw_line in process.stderr:
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    output_lines.append(line)
+                    match = percent_re.search(line)
+                    if match is not None:
+                        try:
+                            pct = int(match.group(1))
+                        except Exception:
+                            pct = 0
+                        self._set_download_progress(True, pct)
+                    QGuiApplication.processEvents()
+            stdout_data = ""
+            if process.stdout is not None:
+                stdout_data = process.stdout.read().strip()
+                if stdout_data:
+                    output_lines.append(stdout_data)
+            return_code = process.wait()
         except Exception as exc:
+            self._set_download_progress(False, 0)
             return False, str(exc)
-        output = (result.stdout or "").strip() or (result.stderr or "").strip()
-        return result.returncode == 0, output
+        success = return_code == 0
+        if success:
+            self._set_download_progress(True, 100)
+        output = "\n".join(output_lines[-8:]).strip()
+        self._set_download_progress(False, 0)
+        return success, output
 
     def _extract_repo_archives(self, provider_key: str, target_dir: Path) -> tuple[bool, str]:
         archives_raw = PROVIDER_META.get(provider_key, {}).get("archives", "")
@@ -776,6 +826,14 @@ class Backend(QObject):
     @pyqtProperty(bool, notify=busyChanged)
     def busy(self) -> bool:
         return self._busy
+
+    @pyqtProperty(int, notify=downloadProgressChanged)
+    def downloadProgress(self) -> int:
+        return self._download_progress
+
+    @pyqtProperty(bool, notify=downloadProgressActiveChanged)
+    def downloadProgressActive(self) -> bool:
+        return self._download_progress_active
 
     @pyqtProperty(int, notify=pinnedSelectionChanged)
     def pinnedIndex(self) -> int:
