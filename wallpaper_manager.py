@@ -18,15 +18,44 @@ from PyQt6.QtWidgets import QApplication, QFileDialog
 
 
 APP_DIR = Path(__file__).resolve().parents[2]
-ROOT = APP_DIR.parents[1]
+
+
+def _resolve_hanauta_root() -> Path | None:
+    env_path = str(os.environ.get("HANAUTA_ROOT", "")).strip()
+    if env_path:
+        candidate = Path(env_path).expanduser()
+        if (candidate / "scripts" / "set_wallpaper.sh").exists():
+            return candidate
+    candidates = [
+        APP_DIR / "hanauta",
+        Path.home() / "dev" / "hanauta" / "hanauta",
+        Path.home() / ".local" / "share" / "hanauta",
+    ]
+    for candidate in candidates:
+        if (candidate / "scripts" / "set_wallpaper.sh").exists():
+            return candidate
+    return None
+
+
+HANAUTA_ROOT = _resolve_hanauta_root()
 SETTINGS_FILE = Path.home() / ".local" / "state" / "hanauta" / "notification-center" / "settings.json"
 CURRENT_WALLPAPER = Path.home() / ".wallpapers" / "wallpaper.png"
-WALLPAPER_SCRIPT = ROOT / "hanauta" / "scripts" / "set_wallpaper.sh"
-MATUGEN_SCRIPT = ROOT / "hanauta" / "scripts" / "run_matugen.sh"
-MATUGEN_BINARY = ROOT / "bin" / "matugen"
-WALLPAPER_CACHE_BINARY = ROOT / "hanauta" / "bin" / "hanauta-wallcache"
+WALLPAPER_SCRIPT = (
+    HANAUTA_ROOT / "scripts" / "set_wallpaper.sh" if HANAUTA_ROOT else Path("/nonexistent")
+)
+MATUGEN_SCRIPT = (
+    HANAUTA_ROOT / "scripts" / "run_matugen.sh" if HANAUTA_ROOT else Path("/nonexistent")
+)
+MATUGEN_BINARY = HANAUTA_ROOT / "bin" / "matugen" if HANAUTA_ROOT else Path("/nonexistent")
+WALLPAPER_CACHE_BINARY = (
+    HANAUTA_ROOT / "bin" / "hanauta-wallcache" if HANAUTA_ROOT else Path("/nonexistent")
+)
 QML_FILE = Path(__file__).resolve().with_suffix(".qml")
-DEFAULT_WALLPAPER_FOLDER = ROOT / "hanauta" / "walls"
+DEFAULT_WALLPAPER_FOLDER = (
+    HANAUTA_ROOT / "walls"
+    if HANAUTA_ROOT
+    else Path.home() / ".local" / "share" / "hanauta" / "walls"
+)
 KONACHAN_CACHE_DIR = DEFAULT_WALLPAPER_FOLDER / "Konachan-cache"
 MAX_KONACHAN_CACHE_ITEMS = 20
 KONACHAN_PROVIDER_DAEMON = Path(__file__).resolve().with_name("wallpaper_provider_daemon.py")
